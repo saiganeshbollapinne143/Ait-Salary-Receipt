@@ -1,8 +1,8 @@
-import tkinter as tk
-from tkinter import font as tkfont
+﻿import streamlit as st
+
+st.set_page_config(page_title="Ait Salary Receipt", layout="centered")
 
 BLACK, WHITE, PEACH, YELLOW, LIGHT_GREY = "#1a1a1a", "#ffffff", "#f8cbad", "#ffff00", "#f2f2f2"
-FONT_FAMILY = "Segoe UI"
 
 def inr(val):
     val = round(val)
@@ -42,93 +42,70 @@ def solve_gross(target_ctc, insurance):
             hi = mid
     return breakdown((lo + hi) / 2.0, insurance)
 
-class CTCCalculatorApp(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.title("Ait Salary Receipt")
-        self.geometry("680x750")
-        self.configure(bg=WHITE)
+def row_html(cells, bg=WHITE, fg=BLACK, bold=False):
+    weight = "700" if bold else "400"
+    tds = ""
+    for i, text in enumerate(cells):
+        align = "left" if i == 0 else "right"
+        tds += f'<td style="padding:6px 10px;text-align:{align};background:{bg};color:{fg};font-weight:{weight};border:1px solid #ddd;">{text}</td>'
+    return f"<tr>{tds}</tr>"
 
-        self.font_b = tkfont.Font(family=FONT_FAMILY, size=10, weight="bold")
-        self.font_n = tkfont.Font(family=FONT_FAMILY, size=10)
+st.markdown(
+    f"<h2 style='text-align:center;background:{BLACK};color:{WHITE};padding:12px;border-radius:6px;'>Ait Salary Receipt</h2>",
+    unsafe_allow_html=True
+)
 
-        self.ctc_var = tk.StringVar(value="50656")
-        self.ins_var = tk.StringVar(value="600")
+col1, col2 = st.columns(2)
+with col1:
+    ctc_input = st.text_input("Monthly CTC", value="50656")
+with col2:
+    ins_input = st.text_input("Insurance", value="600")
 
-        top = tk.Frame(self, bg=BLACK, pady=10)
-        top.pack(fill="x")
-        tk.Label(top, text="Ait Salary Receipt", bg=BLACK, fg=WHITE,
-                 font=tkfont.Font(family=FONT_FAMILY, size=14, weight="bold")).pack()
+if st.button("Calculate", use_container_width=True):
+    try:
+        d = solve_gross(float(ctc_input.replace(",", "")), float(ins_input.replace(",", "")))
+    except ValueError:
+        st.error("Please enter valid numbers.")
+        st.stop()
 
-        inp = tk.Frame(self, bg=WHITE, padx=15, pady=10)
-        inp.pack(fill="x")
-        tk.Label(inp, text="Monthly CTC:", font=self.font_b, bg=WHITE).grid(row=0, column=0, sticky="w")
-        tk.Entry(inp, textvariable=self.ctc_var, width=12, font=self.font_n, justify="right").grid(row=0, column=1, padx=5)
-        tk.Label(inp, text="Insurance:", font=self.font_b, bg=WHITE).grid(row=0, column=2, sticky="w", padx=(15, 0))
-        tk.Entry(inp, textvariable=self.ins_var, width=12, font=self.font_n, justify="right").grid(row=0, column=3, padx=5)
-        tk.Button(inp, text="Calculate", command=self.recalculate, bg=BLACK, fg=WHITE,
-                  font=self.font_b, cursor="hand2").grid(row=0, column=4, padx=10)
+    html = "<table style='width:100%;border-collapse:collapse;font-family:Segoe UI, sans-serif;font-size:14px;'>"
+    html += row_html(("Particulars", "Rate", "Per Month", "Per Year"), bg=BLACK, fg=WHITE, bold=True)
 
-        self.table = tk.Frame(self, bg=WHITE, padx=15, pady=5)
-        self.table.pack(fill="both", expand=True)
-        for i in range(4):
-            self.table.columnconfigure(i, weight=1 if i else 3)
+    earnings = [
+        ("Basic Salary", "50%", d["basic"]),
+        ("HRA", "50%", d["hra"]),
+        ("Medical Allowance", "Fixed", d["medical"]),
+    ]
+    for i, (l, k, v) in enumerate(earnings):
+        html += row_html((l, k, inr(v), inr(v * 12)), bg=LIGHT_GREY if i % 2 else WHITE)
 
-        self.recalculate()
+    html += row_html(("Total Gross Salary", "", inr(d["gross"]), inr(d["gross"] * 12)), bg=PEACH, bold=True)
 
-    def _row(self, r, cells, bg=WHITE, fg=BLACK, bold=False):
-        font = self.font_b if bold else self.font_n
-        for c, text in enumerate(cells):
-            tk.Label(self.table, text=text, bg=bg, fg=fg, font=font,
-                     anchor="w" if c == 0 else "e", padx=6, pady=3).grid(row=r, column=c, sticky="nsew", padx=1, pady=1)
-        return r + 1
+    employers = [
+        ("Employer PF Contribution", "12%", d["employer_pf"]),
+        ("Employer ESI Contribution", "3.25%", d["employer_esi"]),
+        ("Gratuity Contribution", "4.81%", d["gratuity"]),
+        ("Bonus", "8.33%", d["bonus"]),
+        ("Medical & Accidental Insurance", "Input", d["insurance"]),
+    ]
+    for i, (l, k, v) in enumerate(employers):
+        html += row_html((l, k, inr(v), inr(v * 12)), bg=LIGHT_GREY if i % 2 else WHITE)
 
-    def recalculate(self):
-        try:
-            d = solve_gross(float(self.ctc_var.get().replace(",", "")), float(self.ins_var.get().replace(",", "")))
-        except ValueError:
-            return
+    html += row_html(("Cost to Company (CTC)", "", inr(d["ctc"]), inr(d["ctc"] * 12)), bg=PEACH, bold=True)
+    html += row_html(("Deductions", "", "", ""), bg=BLACK, fg=WHITE, bold=True)
 
-        for w in self.table.winfo_children():
-            w.destroy()
+    deductions = [
+        ("PF Contribution by Employee", "12%", d["employee_pf"]),
+        ("ESI Contribution by Employee", "0.75%", d["employee_esi"]),
+        ("Professional Tax (PT)", "Slab", d["pt"]),
+        ("Security Deposit", "2%", d["sec_dep"]),
+    ]
+    for i, (l, k, v) in enumerate(deductions):
+        html += row_html((l, k, inr(v), inr(v * 12)), bg=LIGHT_GREY if i % 2 else WHITE)
 
-        r = self._row(0, ("Particulars", "Rate", "Per Month", "Per Year"), bg=BLACK, fg=WHITE, bold=True)
+    html += row_html(("Total Deductions", "", inr(d["tot_ded"]), inr(d["tot_ded"] * 12)), bg=BLACK, fg=WHITE, bold=True)
+    html += row_html(("Net Salary (In Hand)", "", inr(d["net"]), inr(d["net"] * 12)), bg=YELLOW, bold=True)
 
-        earnings = [
-            ("Basic Salary", "50%", d["basic"]),
-            ("HRA", "50%", d["hra"]),
-            ("Medical Allowance", "Fixed", d["medical"]),
-        ]
-        for i, (l, k, v) in enumerate(earnings):
-            r = self._row(r, (l, k, inr(v), inr(v * 12)), bg=LIGHT_GREY if i % 2 else WHITE)
+    html += "</table>"
 
-        r = self._row(r, ("Total Gross Salary", "", inr(d["gross"]), inr(d["gross"] * 12)), bg=PEACH, bold=True)
-
-        employers = [
-            ("Employer PF Contribution", "12%", d["employer_pf"]),
-            ("Employer ESI Contribution", "3.25%", d["employer_esi"]),
-            ("Gratuity Contribution", "4.81%", d["gratuity"]),
-            ("Bonus", "8.33%", d["bonus"]),
-            ("Medical & Accidental Insurance", "Input", d["insurance"]),
-        ]
-        for i, (l, k, v) in enumerate(employers):
-            r = self._row(r, (l, k, inr(v), inr(v * 12)), bg=LIGHT_GREY if i % 2 else WHITE)
-
-        r = self._row(r, ("Cost to Company (CTC)", "", inr(d["ctc"]), inr(d["ctc"] * 12)), bg=PEACH, bold=True)
-
-        r = self._row(r, ("Deductions", "", "", ""), bg=BLACK, fg=WHITE, bold=True)
-
-        deductions = [
-            ("PF Contribution by Employee", "12%", d["employee_pf"]),
-            ("ESI Contribution by Employee", "0.75%", d["employee_esi"]),
-            ("Professional Tax (PT)", "Slab", d["pt"]),
-            ("Security Deposit", "2%", d["sec_dep"]),
-        ]
-        for i, (l, k, v) in enumerate(deductions):
-            r = self._row(r, (l, k, inr(v), inr(v * 12)), bg=LIGHT_GREY if i % 2 else WHITE)
-
-        r = self._row(r, ("Total Deductions", "", inr(d["tot_ded"]), inr(d["tot_ded"] * 12)), bg=BLACK, fg=WHITE, bold=True)
-        r = self._row(r, ("Net Salary (In Hand)", "", inr(d["net"]), inr(d["net"] * 12)), bg=YELLOW, bold=True)
-
-if __name__ == "__main__":
-    CTCCalculatorApp().mainloop()
+    st.markdown(html, unsafe_allow_html=True)
